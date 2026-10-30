@@ -1,0 +1,8 @@
+{
+  "name": "hydrotec-berichtsheft",
+  "compatibility_date": "2026-10-01",
+  // Nur statische Dateien, kein Worker-Script
+  "assets": {
+    "directory": "./public"
+  }
+}
