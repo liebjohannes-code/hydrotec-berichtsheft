@@ -6,7 +6,7 @@ wöchentlichen Ausbildungsnachweis (Berichtsheft) ausfüllen und als PDF exporti
 ## Was die App macht
 
 - **Kopfdaten:** Name, Abteilung und Ausbildungsjahr per Dropdown (Name und Abteilung auch als Freitext über „Sonstige“).
-- **Kalenderwoche:** Beim Öffnen wird automatisch die aktuelle ISO-Kalenderwoche angezeigt. Mit ◀ ▶ blättert man zur Vor- oder Folgewoche. Die Eingaben bleiben dabei erhalten.
+- **Kalenderwoche:** Beim Öffnen wird automatisch die aktuelle ISO-Kalenderwoche angezeigt. Mit ◀ ▶ blättert man zur Vor- oder Folgewoche. Beim Wochenwechsel werden die Tageseinträge geleert (vorher kommt eine Rückfrage, falls schon Text eingetragen ist). Name, Abteilung und Ausbildungsjahr bleiben erhalten.
 - **Tage Montag bis Freitag:** Für jeden Tag wählt man Betrieb, Berufsschule, Urlaub, Krank oder Feiertag. Bei Betrieb und Berufsschule trägt man Tätigkeiten bzw. Themen und die Stunden ein (Standard: 8 h Betrieb, 6 h Schule).
 - **Feiertage Niedersachsen** werden automatisch erkannt (Ostern wird per Gauß/Meeus-Formel berechnet, keine API) und können manuell überschrieben werden.
 - **PDF-Export** (A4, im Browser mit jsPDF): Logo, Kopfdaten, Wochentabelle, Wochensumme, Unterschriftslinien, Fußzeile mit Seitenzahl.
@@ -47,6 +47,7 @@ public/                 ← alles, was ausgeliefert wird
   logo.jpg
   vendor/               ← jsPDF + jspdf-autotable (lokal, kein CDN)
 tests/kalender.test.js  ← Tests für KW- und Feiertagsberechnung
+tests/browser.test.js   ← Browser-Test der Oberfläche (Playwright)
 wrangler.jsonc          ← Cloudflare-Konfiguration (nur Static Assets)
 ```
 
@@ -67,6 +68,13 @@ Tests (Node.js 18+):
 
 ```bash
 node --test tests/kalender.test.js
+```
+
+Browser-Test (klickt die App in Chromium durch; benötigt [Playwright](https://playwright.dev),
+wird sonst übersprungen):
+
+```bash
+node --test tests/browser.test.js
 ```
 
 ## Deployment über Cloudflare Workers

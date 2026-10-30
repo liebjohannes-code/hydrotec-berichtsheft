@@ -49,9 +49,13 @@ const ABTEILUNGEN = [
 
   const $ = (id) => document.getElementById(id);
 
+  function leereTage() {
+    return WOCHENTAGE.map(() => ({ typ: 'Betrieb', text: '', stunden: STANDARD_STUNDEN.Betrieb, feiertag: null }));
+  }
+
   const zustand = {
     montag: K.montagDerWoche(new Date()),
-    tage: WOCHENTAGE.map(() => ({ typ: 'Betrieb', text: '', stunden: 8, feiertag: null })),
+    tage: leereTage(),
     geaendert: false
   };
 
@@ -240,18 +244,32 @@ const ABTEILUNGEN = [
 
   /* ---------- Kalenderwoche ---------- */
 
-  // Feiertage für die aktuelle Woche neu bestimmen. Alle anderen Eingaben bleiben.
-  function berechneFeiertage() {
+  // Gesetzliche Feiertage der aktuellen Woche als Typ „Feiertag“ setzen.
+  function setzeFeiertage() {
     zustand.tage.forEach((tag, i) => {
-      const name = K.feiertagName(datumVonTag(i));
-      tag.feiertag = name;
-      if (name) {
+      tag.feiertag = K.feiertagName(datumVonTag(i));
+      if (tag.feiertag) {
         tag.typ = 'Feiertag';
         tag.stunden = 0;
-      } else if (tag.typ === 'Feiertag') {
-        tag.typ = 'Betrieb';
-        tag.stunden = STANDARD_STUNDEN.Betrieb;
       }
+    });
+  }
+
+  function hatTageseintraege() {
+    return zustand.tage.some((t) => istArbeitstag(t.typ) && t.text.trim() !== '');
+  }
+
+  // Ja/Abbrechen-Dialog; liefert ein Promise<boolean>.
+  function bestaetige() {
+    const dialog = $('wocheDialog');
+    if (typeof dialog.showModal !== 'function') {
+      return Promise.resolve(window.confirm(dialog.querySelector('p').textContent));
+    }
+    return new Promise((resolve) => {
+      dialog.returnValue = '';
+      dialog.addEventListener('close', () => resolve(dialog.returnValue === 'ja'), { once: true });
+      dialog.showModal();
+      $('wocheAbbrechen').focus();
     });
   }
 
@@ -265,9 +283,14 @@ const ABTEILUNGEN = [
     aktualisiereSumme();
   }
 
-  function wechsleWoche(montag) {
+  // Neue Woche starten: Tageseinträge werden geleert, Kopfdaten bleiben.
+  async function wechsleWoche(montag) {
+    if (hatTageseintraege() && !(await bestaetige())) return;
     zustand.montag = montag;
-    berechneFeiertage();
+    zustand.tage = leereTage();
+    setzeFeiertage();
+    karten.forEach((k) => k.text.classList.remove('ungueltig'));
+    $('fehlermeldung').hidden = !document.querySelector('.ungueltig');
     $('mailBox').hidden = true;
     zeichneWoche();
   }
@@ -523,7 +546,7 @@ const ABTEILUNGEN = [
     });
 
     baueTage();
-    berechneFeiertage();
+    setzeFeiertage();
     zeichneWoche();
 
     $('kwZurueck').addEventListener('click', () => wechsleWoche(K.addTage(zustand.montag, -7)));
