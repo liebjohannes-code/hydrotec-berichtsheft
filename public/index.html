@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Berichtsheft-Generator – HYDROTEC</title>
+  <meta name="robots" content="noindex">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <img src="logo.jpg" alt="HYDROTEC" class="logo" id="logo" width="1239" height="236">
+      <span class="app-title">Berichtsheft-Generator</span>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card" aria-labelledby="h-kopf">
+      <h2 id="h-kopf">Deine Angaben</h2>
+      <div class="kopf-grid">
+        <div class="feld">
+          <label for="name">Name</label>
+          <select id="name"></select>
+          <input type="text" id="nameSonstige" class="sonstige" placeholder="Vor- und Nachname" autocomplete="name" hidden>
+        </div>
+        <div class="feld">
+          <label for="abteilung">Abteilung</label>
+          <select id="abteilung"></select>
+          <input type="text" id="abteilungSonstige" class="sonstige" placeholder="Abteilung eingeben" hidden>
+        </div>
+        <div class="feld">
+          <label for="jahr">Ausbildungsjahr</label>
+          <select id="jahr">
+            <option value="">Bitte wählen</option>
+            <option value="1">1. Ausbildungsjahr</option>
+            <option value="2">2. Ausbildungsjahr</option>
+            <option value="3">3. Ausbildungsjahr</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <section class="kw-nav" aria-label="Kalenderwoche">
+      <button type="button" class="pfeil" id="kwZurueck" aria-label="Vorherige Woche">◀</button>
+      <div class="kw-mitte">
+        <div class="kw-titel" id="kwTitel" aria-live="polite">KW – / –</div>
+        <div class="kw-zeitraum" id="kwZeitraum"></div>
+        <button type="button" class="link-btn" id="kwHeute" hidden>Zur aktuellen Woche</button>
+      </div>
+      <button type="button" class="pfeil" id="kwVor" aria-label="Nächste Woche">▶</button>
+    </section>
+
+    <section id="tage" class="tage" aria-label="Wochentage"></section>
+
+    <section class="summe card">
+      <span>Wochensumme</span>
+      <strong id="wochensumme">0 Std.</strong>
+    </section>
+
+    <div class="aktion">
+      <p class="fehlermeldung" id="fehlermeldung" role="alert" hidden></p>
+      <button type="button" class="btn-primaer" id="pdfExport">PDF exportieren</button>
+    </div>
+
+    <section class="card mail-box" id="mailBox" hidden aria-labelledby="h-mail">
+      <h2 id="h-mail">E-Mail an die Ausbildung</h2>
+      <p class="hinweis">✓ PDF wurde heruntergeladen – bitte an die Mail anhängen.</p>
+
+      <label for="mailBetreff">Betreff</label>
+      <div class="kopier-zeile">
+        <input type="text" id="mailBetreff" readonly>
+        <button type="button" class="btn-sekundaer" data-kopieren="mailBetreff">Kopieren</button>
+      </div>
+
+      <label for="mailText">Mailtext</label>
+      <div class="kopier-zeile kopier-zeile--text">
+        <textarea id="mailText" rows="8" readonly></textarea>
+        <button type="button" class="btn-sekundaer" data-kopieren="mailText">Kopieren</button>
+      </div>
+    </section>
+  </main>
+
+  <footer class="fuss">
+    HYDROTEC Technologies AG · Es werden keine Daten gespeichert oder übertragen.
+  </footer>
+
+  <template id="tagVorlage">
+    <article class="tag card">
+      <header class="tag-kopf">
+        <div>
+          <h3 class="tag-name"></h3>
+          <div class="tag-datum"></div>
+        </div>
+        <span class="feiertag-badge" hidden></span>
+      </header>
+      <div class="segmente" role="radiogroup"></div>
+      <div class="tag-felder">
+        <div class="feld feld-text">
+          <label class="text-label"></label>
+          <textarea rows="3"></textarea>
+        </div>
+        <div class="feld feld-std">
+          <label class="std-label">Stunden</label>
+          <input type="number" min="0" max="24" step="0.5" inputmode="decimal">
+        </div>
+      </div>
+    </article>
+  </template>
+
+  <script src="vendor/jspdf.umd.min.js"></script>
+  <script src="vendor/jspdf.plugin.autotable.min.js"></script>
+  <script src="kalender.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
