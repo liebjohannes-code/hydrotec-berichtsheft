@@ -1,12 +1,14 @@
 /*
  * Berichtsheft-Generator – HYDROTEC Technologies AG
- * Es wird nichts gespeichert: alle Eingaben leben nur im Browser-Tab.
+ * Oberfläche. Die Fachlogik steckt in kalender.js, ferien.js, zeit.js, bericht.js und pdf.js.
+ * Es wird nichts gespeichert: alle Eingaben leben nur im Browser-Tab und im exportierten PDF.
  */
 
 /* =====================================================================
  *  LISTEN ZUM PFLEGEN
  *  Einfach Namen/Abteilungen hinzufügen, entfernen oder umbenennen.
  *  „Sonstige“ (Freitext) wird automatisch als letzter Eintrag ergänzt.
+ *  (Die Schulferien stehen in ferien.js.)
  * ===================================================================== */
 const AZUBIS = [
   'Jeremy Turgut',
@@ -37,292 +39,581 @@ const ABTEILUNGEN = [
   'use strict';
 
   const K = window.Kalender;
+  const Z = window.Zeit;
+  const B = window.Bericht;
+  const P = window.BerichtPdf;
   const SONSTIGE = '__sonstige__';
-  const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag'];
-  const TYPEN = ['Betrieb', 'Berufsschule', 'Urlaub', 'Krank', 'Feiertag'];
-  const STANDARD_STUNDEN = { Betrieb: 8, Berufsschule: 6, Urlaub: 0, Krank: 0, Feiertag: 0 };
   const TEXT_INFO = {
     Betrieb: { label: 'Tätigkeiten', placeholder: 'Welche Tätigkeiten hast du heute im Betrieb erledigt?' },
     Berufsschule: { label: 'Themen / Fächer', placeholder: 'Welche Fächer und Themen wurden behandelt?' }
   };
-  const FARBE = { grau: [127, 127, 127], dunkel: [74, 74, 74], mint: [77, 229, 178], mintHell: [230, 251, 244], blau: [0, 115, 191] };
+  const CHIP_KLASSE = { Feiertag: 'chip-feiertag', Urlaub: 'chip-urlaub', Krank: 'chip-krank', Ferien: 'chip-ferien' };
 
   const $ = (id) => document.getElementById(id);
-
-  function leereTage() {
-    return WOCHENTAGE.map(() => ({ typ: 'Betrieb', text: '', stunden: STANDARD_STUNDEN.Betrieb, feiertag: null }));
-  }
-
-  const zustand = {
-    montag: K.montagDerWoche(new Date()),
-    tage: leereTage(),
-    geaendert: false
+  const el = (tag, klasse, text) => {
+    const e = document.createElement(tag);
+    if (klasse) e.className = klasse;
+    if (text != null) e.textContent = text;
+    return e;
   };
 
-  /* ---------- Hilfsfunktionen ---------- */
-
-  function istArbeitstag(typ) {
-    return typ === 'Betrieb' || typ === 'Berufsschule';
-  }
-
-  function formatStunden(n) {
-    return String(Math.round(n * 100) / 100).replace('.', ',');
-  }
-
-  function parseStunden(wert) {
-    const n = parseFloat(String(wert).replace(',', '.'));
-    if (!isFinite(n) || n < 0) return 0;
-    return Math.min(24, Math.round(n * 2) / 2);
-  }
-
-  function datumVonTag(i) {
-    return K.addTage(zustand.montag, i);
-  }
-
-  function kwInfo() {
-    const kw = K.isoWoche(zustand.montag);
-    const mo = datumVonTag(0);
-    const fr = datumVonTag(4);
-    const kurz = mo.getFullYear() === fr.getFullYear()
-      ? K.zweistellig(mo.getDate()) + '.' + K.zweistellig(mo.getMonth() + 1) + '.–' + K.formatDatum(fr)
-      : K.formatDatum(mo) + '–' + K.formatDatum(fr);
-    return {
-      woche: kw.woche,
-      jahr: kw.jahr,
-      zeitraum: K.formatDatum(mo) + ' – ' + K.formatDatum(fr),
-      zeitraumKurz: kurz
-    };
-  }
-
-  function wochensumme() {
-    return zustand.tage.reduce((s, t) => s + (istArbeitstag(t.typ) ? t.stunden : 0), 0);
-  }
-
-  function auswahlWert(selectId, freitextId) {
-    const sel = $(selectId);
-    if (sel.value === SONSTIGE) return $(freitextId).value.trim();
-    return sel.value;
-  }
-
-  // Für Dateinamen: Umlaute ersetzen, Leerzeichen → Bindestrich, Sonderzeichen entfernen.
-  function dateinamenTeil(s) {
-    return s
-      .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue')
-      .replace(/Ä/g, 'Ae').replace(/Ö/g, 'Oe').replace(/Ü/g, 'Ue')
-      .replace(/ß/g, 'ss')
-      .normalize('NFD').replace(/[̀-ͯ]/g, '')
-      .trim()
-      .replace(/\s+/g, '-')
-      .replace(/[^A-Za-z0-9._-]/g, '')
-      .replace(/-+/g, '-');
-  }
+  let z = B.neuerZustand(new Date());
+  let geaendert = false;
 
   function markiereGeaendert() {
-    zustand.geaendert = true;
+    geaendert = true;
     $('mailBox').hidden = true;
-    if (!document.querySelector('.ungueltig')) $('fehlermeldung').hidden = true;
   }
 
-  /* ---------- Kopfdaten ---------- */
+  /* ================================================================
+   *  Kopfdaten
+   * ================================================================ */
 
-  function fuelleSelect(sel, eintraege, platzhalter) {
-    sel.add(new Option(platzhalter, ''));
+  function fuelleSelect(sel, eintraege) {
+    sel.add(new Option('Bitte wählen', ''));
     eintraege.forEach((e) => sel.add(new Option(e, e)));
     sel.add(new Option('Sonstige …', SONSTIGE));
   }
 
-  function verbindeSonstige(selectId, freitextId) {
+  function auswahlWert(selectId, freiId) {
     const sel = $(selectId);
-    const frei = $(freitextId);
+    return (sel.value === SONSTIGE ? $(freiId).value : sel.value).replace(/\s+/g, ' ').trim();
+  }
+
+  function setzeAuswahl(selectId, freiId, wert, liste) {
+    const sel = $(selectId);
+    const frei = $(freiId);
+    if (!wert) { sel.value = ''; frei.value = ''; }
+    else if (liste.indexOf(wert) >= 0) { sel.value = wert; frei.value = ''; }
+    else { sel.value = SONSTIGE; frei.value = wert; }
+    frei.hidden = sel.value !== SONSTIGE;
+  }
+
+  function verbindeAuswahl(selectId, freiId, feld) {
+    const sel = $(selectId);
+    const frei = $(freiId);
+    const uebernehmen = () => {
+      z.kopf[feld] = auswahlWert(selectId, freiId);
+      markiereGeaendert();
+    };
     sel.addEventListener('change', () => {
       frei.hidden = sel.value !== SONSTIGE;
       if (!frei.hidden) frei.focus();
-      sel.classList.remove('ungueltig');
-      frei.classList.remove('ungueltig');
-      markiereGeaendert();
+      uebernehmen();
     });
-    frei.addEventListener('input', () => {
-      frei.classList.remove('ungueltig');
-      markiereGeaendert();
-    });
+    frei.addEventListener('input', uebernehmen);
   }
 
-  /* ---------- Tage ---------- */
+  function zeichneNachweisNr() {
+    const feld = $('nachweisNr');
+    if (document.activeElement !== feld) feld.value = z.kopf.nachweisNr;
+    const hinweis = $('nrHinweis');
+    hinweis.textContent = '';
+    if (!z.kopf.beginn) {
+      hinweis.textContent = 'Mit Ausbildungsbeginn wird die Nr. automatisch berechnet.';
+    } else if (z.kopf.nachweisNrManuell) {
+      hinweis.append('Manuell geändert · ');
+      const knopf = el('button', 'link-btn', 'automatisch berechnen');
+      knopf.type = 'button';
+      knopf.addEventListener('click', () => {
+        z.kopf.nachweisNrManuell = false;
+        B.aktualisiereNachweisNr(z);
+        markiereGeaendert();
+        zeichneNachweisNr();
+      });
+      hinweis.append(knopf);
+    } else if (!z.kopf.nachweisNr) {
+      hinweis.textContent = 'Diese Woche liegt vor dem Ausbildungsbeginn.';
+    } else {
+      hinweis.textContent = 'Automatisch aus dem Ausbildungsbeginn berechnet.';
+    }
+  }
+
+  function zeichneKopf() {
+    setzeAuswahl('name', 'nameSonstige', z.kopf.name, AZUBIS);
+    setzeAuswahl('abteilung', 'abteilungSonstige', z.kopf.abteilung, ABTEILUNGEN);
+    $('jahr').value = z.kopf.jahr;
+    $('beginn').value = z.kopf.beginn;
+    zeichneNachweisNr();
+  }
+
+  /* ================================================================
+   *  Zeit-Eingabe (Stunden- und Minutenfeld)
+   * ================================================================ */
+
+  // Baut ein Std:Min-Feldpaar; liefert ein Objekt zum Aktualisieren.
+  function baueZeitFeld(i, beschriftung) {
+    const box = el('div', 'zeit');
+    const std = el('input', 'zeit-std');
+    const min = el('input', 'zeit-min');
+    [std, min].forEach((f) => {
+      f.type = 'text';
+      f.inputMode = 'numeric';
+      f.maxLength = 2;
+      f.autocomplete = 'off';
+      f.spellcheck = true;
+      f.lang = 'de';
+    });
+    std.placeholder = 'Std';
+    min.placeholder = 'Min';
+    std.setAttribute('aria-label', 'Stunden ' + beschriftung);
+    min.setAttribute('aria-label', 'Minuten ' + beschriftung);
+    box.append(std, el('span', 'zeit-doppelpunkt', ':'), min);
+    const fehler = el('div', 'zeit-fehler');
+    fehler.setAttribute('role', 'status');
+
+    const lesen = () => {
+      const roh = std.value.trim() || min.value.trim() ? std.value.trim() + ':' + min.value.trim() : '';
+      z.tage[i].zeit = roh;
+      zeigeFehler();
+      zeichneSummen();
+      markiereGeaendert();
+    };
+    const zeigeFehler = () => {
+      const r = Z.parseZeit(z.tage[i].zeit);
+      fehler.textContent = r.fehler || '';
+      box.classList.toggle('zeit-falsch', !!r.fehler);
+    };
+    std.addEventListener('input', () => {
+      if (std.value.length === 2 && /^\d\d$/.test(std.value)) min.focus();
+      lesen();
+    });
+    min.addEventListener('input', lesen);
+    // Erst normalisieren („8:5“ → „8:05“), wenn der Fokus das ganze Zeitfeld verlässt –
+    // sonst stünde beim Wechsel von Std nach Min schon „00“ im Minutenfeld.
+    box.addEventListener('focusout', (e) => {
+      if (box.contains(e.relatedTarget)) return;
+      const r = Z.parseZeit(z.tage[i].zeit);
+      if (r.minuten != null && z.tage[i].zeit) {
+        z.tage[i].zeit = Z.formatZeit(r.minuten);
+        std.value = String(Math.floor(r.minuten / 60));
+        min.value = K.zweistellig(r.minuten % 60);
+      }
+    });
+
+    function aktualisiere(aktiv) {
+      std.disabled = min.disabled = !aktiv;
+      if (!aktiv) {
+        std.value = z.tage[i].art ? '0' : '';
+        min.value = z.tage[i].art ? '00' : '';
+        fehler.textContent = '';
+        box.classList.remove('zeit-falsch');
+        return;
+      }
+      const teile = z.tage[i].zeit ? z.tage[i].zeit.split(':') : ['', ''];
+      if (document.activeElement !== std) std.value = teile[0] || '';
+      if (document.activeElement !== min) min.value = teile[1] || '';
+      zeigeFehler();
+    }
+    return { box, fehler, aktualisiere };
+  }
+
+  /* ================================================================
+   *  Tagesbericht
+   * ================================================================ */
 
   const karten = [];
 
-  function baueTage() {
+  function baueTagesKarten() {
     const vorlage = $('tagVorlage');
-    const container = $('tage');
-    WOCHENTAGE.forEach((name, i) => {
+    B.WOCHENTAGE.forEach((name, i) => {
       const knoten = vorlage.content.firstElementChild.cloneNode(true);
       knoten.querySelector('.tag-name').textContent = name;
 
       const segmente = knoten.querySelector('.segmente');
       segmente.setAttribute('aria-label', 'Art des Tages – ' + name);
-      TYPEN.forEach((typ) => {
-        const label = document.createElement('label');
-        const radio = document.createElement('input');
+      segmente.id = 'tag-' + i + '-art';
+      B.ARTEN.forEach((art) => {
+        const label = el('label');
+        const radio = el('input');
         radio.type = 'radio';
-        radio.name = 'typ-' + i;
-        radio.value = typ;
-        radio.addEventListener('change', () => setzeTyp(i, typ));
-        label.append(radio, document.createTextNode(typ));
+        radio.name = 'art-' + i;
+        radio.value = art;
+        radio.addEventListener('change', () => setzeArt(i, art));
+        label.append(radio, document.createTextNode(art));
         segmente.append(label);
       });
 
       const text = knoten.querySelector('textarea');
-      text.id = 'text-' + i;
+      text.id = 'tag-' + i + '-text';
       knoten.querySelector('.text-label').htmlFor = text.id;
       text.addEventListener('input', () => {
-        zustand.tage[i].text = text.value;
-        text.classList.remove('ungueltig');
+        z.tage[i].text = text.value;
+        wachse(text);
         markiereGeaendert();
       });
 
-      const std = knoten.querySelector('input[type="number"]');
-      std.id = 'std-' + i;
-      knoten.querySelector('.std-label').htmlFor = std.id;
-      std.addEventListener('input', () => {
-        zustand.tage[i].stunden = parseStunden(std.value);
-        aktualisiereSumme();
-        markiereGeaendert();
-      });
-      std.addEventListener('change', () => {
-        std.value = zustand.tage[i].stunden;
-      });
+      const zeit = baueZeitFeld(i, name);
+      zeit.box.id = 'tag-' + i + '-zeit';
+      knoten.querySelector('.zeit-platz').append(zeit.box, zeit.fehler);
 
-      container.append(knoten);
-      karten.push({ knoten, text, std, segmente });
+      $('tage').append(knoten);
+      karten.push({ knoten, segmente, text, zeit });
     });
   }
 
-  function setzeTyp(i, typ) {
-    const tag = zustand.tage[i];
-    if (tag.typ === typ) return;
-    tag.typ = typ;
-    tag.stunden = STANDARD_STUNDEN[typ];
-    markiereGeaendert();
-    zeichneTag(i);
-    aktualisiereSumme();
+  function chipsFuer(container, info, tag) {
+    container.textContent = '';
+    if (info.feiertag) container.append(el('span', 'chip chip-feiertag', 'Feiertag: ' + info.feiertag));
+    if (info.abwesenheit && !info.feiertag) container.append(el('span', 'chip ' + CHIP_KLASSE[info.abwesenheit], info.abwesenheit));
+    if (info.ferien && !info.gesperrt) {
+      container.append(el('span', 'chip chip-ferien', info.ferienName === 'Ferientag' ? 'Ferien (Ferientag)' : 'Ferien'));
+    }
+    return tag;
   }
 
-  function zeichneTag(i) {
-    const tag = zustand.tage[i];
+  function zeichneTagesKarte(i, info) {
+    const tag = z.tage[i];
     const k = karten[i];
-    const aktiv = istArbeitstag(tag.typ);
-
-    k.knoten.querySelector('.tag-datum').textContent = K.formatDatum(datumVonTag(i));
-    const badge = k.knoten.querySelector('.feiertag-badge');
-    badge.hidden = !tag.feiertag;
-    badge.textContent = tag.feiertag ? 'Feiertag: ' + tag.feiertag : '';
-    k.knoten.classList.toggle('ist-frei', !aktiv);
+    const aktiv = B.istArbeitsart(tag.art);
+    k.knoten.querySelector('.tag-datum').textContent = K.formatDatum(B.datumVonTag(z, i));
+    chipsFuer(k.knoten.querySelector('.chips'), info, tag);
+    k.knoten.classList.toggle('ist-frei', !!tag.art && !aktiv);
 
     k.segmente.querySelectorAll('label').forEach((label) => {
       const radio = label.querySelector('input');
-      radio.checked = radio.value === tag.typ;
+      radio.checked = radio.value === tag.art;
+      radio.disabled = radio.value === 'Berufsschule' && info.ferien;
       label.classList.toggle('aktiv', radio.checked);
+      label.classList.toggle('gesperrt', radio.disabled);
+      label.title = radio.disabled ? 'In den Ferien ist keine Berufsschule' : '';
     });
 
-    const info = TEXT_INFO[tag.typ];
-    k.knoten.querySelector('.text-label').textContent = info ? info.label : 'Tätigkeiten / Themen';
-    k.text.placeholder = info ? info.placeholder : '';
+    const textInfo = TEXT_INFO[tag.art];
+    k.knoten.querySelector('.text-label').textContent = textInfo ? textInfo.label : 'Tätigkeiten / Themen';
+    k.text.placeholder = textInfo ? textInfo.placeholder : (tag.art ? '' : 'Bitte zuerst die Art wählen.');
     k.text.disabled = !aktiv;
     k.text.value = aktiv ? tag.text : '';
-    if (!aktiv) {
-      k.text.classList.remove('ungueltig');
-      if (!document.querySelector('.ungueltig')) $('fehlermeldung').hidden = true;
-    }
-
-    k.std.disabled = !aktiv;
-    k.std.value = aktiv ? tag.stunden : 0;
+    wachse(k.text);
+    k.zeit.aktualisiere(aktiv);
   }
 
-  function aktualisiereSumme() {
-    $('wochensumme').textContent = formatStunden(wochensumme()) + ' Std.';
+  function setzeArt(i, art) {
+    if (z.tage[i].art === art) return;
+    z.tage[i].art = art;
+    markiereGeaendert();
+    zeichneTage();
   }
 
-  /* ---------- Kalenderwoche ---------- */
+  /* ================================================================
+   *  Wochenbericht
+   * ================================================================ */
 
-  // Gesetzliche Feiertage der aktuellen Woche als Typ „Feiertag“ setzen.
-  function setzeFeiertage() {
-    zustand.tage.forEach((tag, i) => {
-      tag.feiertag = K.feiertagName(datumVonTag(i));
-      if (tag.feiertag) {
-        tag.typ = 'Feiertag';
-        tag.stunden = 0;
-      }
+  const zeilen = [];
+
+  function baueWochenleiste() {
+    const leiste = $('wochenleiste');
+    leiste.append(el('div', 'wl-titel', 'Wochenübersicht'));
+    B.WOCHENTAGE.forEach((name, i) => {
+      const zeile = el('div', 'wl-zeile');
+      const tag = el('div', 'wl-tag');
+      const tagName = el('strong', null, name);
+      const datum = el('span', 'wl-datum');
+      tag.append(tagName, datum);
+
+      const art = el('div', 'wl-art');
+      art.id = 'woche-' + i + '-art';
+      const wahl = el('div', 'wl-wahl');
+      wahl.setAttribute('role', 'radiogroup');
+      wahl.setAttribute('aria-label', 'Art – ' + name);
+      ['Betrieb', 'Berufsschule'].forEach((a) => {
+        const label = el('label');
+        const radio = el('input');
+        radio.type = 'radio';
+        radio.name = 'wart-' + i;
+        radio.value = a;
+        radio.addEventListener('change', () => setzeArt(i, a));
+        label.append(radio, document.createTextNode(a));
+        wahl.append(label);
+      });
+      const chips = el('div', 'chips');
+      art.append(wahl, chips);
+
+      const zeit = baueZeitFeld(i, name);
+      zeit.box.id = 'woche-' + i + '-zeit';
+      const zeitPlatz = el('div', 'wl-zeit');
+      zeitPlatz.append(zeit.box, zeit.fehler);
+
+      zeile.append(tag, art, zeitPlatz);
+      leiste.append(zeile);
+      zeilen.push({ zeile, datum, wahl, chips, zeit });
     });
   }
 
-  function hatTageseintraege() {
-    return zustand.tage.some((t) => istArbeitstag(t.typ) && t.text.trim() !== '');
+  function zeichneWochenZeile(i, info) {
+    const tag = z.tage[i];
+    const r = zeilen[i];
+    const datum = B.datumVonTag(z, i);
+    r.datum.textContent = K.formatDatum(datum);
+    r.zeile.className = 'wl-zeile' + (info.gesperrt ? ' wl-' + info.gesperrt.toLowerCase() : info.ferien ? ' wl-ferien' : '');
+    r.wahl.hidden = !!info.gesperrt;
+    r.wahl.querySelectorAll('label').forEach((label) => {
+      const radio = label.querySelector('input');
+      radio.checked = radio.value === tag.art;
+      radio.disabled = radio.value === 'Berufsschule' && info.ferien;
+      label.classList.toggle('aktiv', radio.checked);
+      label.classList.toggle('gesperrt', radio.disabled);
+      label.title = radio.disabled ? 'In den Ferien ist keine Berufsschule' : '';
+    });
+    r.chips.textContent = '';
+    if (info.feiertag) r.chips.append(el('span', 'chip chip-feiertag', 'Feiertag · ' + info.feiertag));
+    else if (info.abwesenheit) r.chips.append(el('span', 'chip ' + CHIP_KLASSE[info.abwesenheit], info.abwesenheit));
+    if (info.ferien && !info.gesperrt) r.chips.append(el('span', 'chip chip-ferien', 'Ferien'));
+    r.zeit.aktualisiere(B.istArbeitsart(tag.art));
   }
 
-  // Ja/Abbrechen-Dialog; liefert ein Promise<boolean>.
-  function bestaetige() {
-    const dialog = $('wocheDialog');
-    if (typeof dialog.showModal !== 'function') {
-      return Promise.resolve(window.confirm(dialog.querySelector('p').textContent));
+  function verbindeBlock(id, feld) {
+    const t = $(id);
+    t.addEventListener('input', () => {
+      z.texte[feld] = t.value;
+      wachse(t);
+      markiereGeaendert();
+    });
+  }
+
+  function zeichneWochenTexte() {
+    [['textBetrieb', 'betrieb'], ['textUnterweisung', 'unterweisung'], ['textSchule', 'schule']].forEach(([id, feld]) => {
+      const t = $(id);
+      if (t.value !== z.texte[feld]) t.value = z.texte[feld];
+      wachse(t);
+    });
+    $('blockSchule').hidden = !B.schuleMoeglich(z);
+  }
+
+  /* ================================================================
+   *  Abwesenheiten
+   * ================================================================ */
+
+  function zeichneAbwesenheiten() {
+    const liste = $('abwListe');
+    liste.textContent = '';
+    z.abwesenheiten.forEach((a, i) => {
+      const zeile = el('div', 'abw-zeile');
+      zeile.id = 'abw-' + i;
+
+      const art = el('select');
+      art.setAttribute('aria-label', 'Art der Abwesenheit');
+      B.ABWESENHEITSARTEN.forEach((x) => art.add(new Option(x, x)));
+      art.value = a.art;
+
+      const von = el('input');
+      von.type = 'date';
+      von.value = a.von;
+      von.setAttribute('aria-label', 'Von');
+      const bis = el('input');
+      bis.type = 'date';
+      bis.value = a.bis;
+      bis.setAttribute('aria-label', 'Bis');
+
+      const loeschen = el('button', 'abw-loeschen', '✕');
+      loeschen.type = 'button';
+      loeschen.setAttribute('aria-label', 'Abwesenheit löschen');
+      loeschen.title = 'Löschen';
+
+      const fehler = el('div', 'abw-fehler');
+      const pruefen = () => {
+        const t = B.abwesenheitFehler(z.abwesenheiten[i]);
+        fehler.textContent = t || '';
+        zeile.classList.toggle('abw-falsch', !!t);
+      };
+      const geaendertAbw = () => {
+        z.abwesenheiten[i] = { art: art.value, von: von.value, bis: bis.value };
+        pruefen();
+        markiereGeaendert();
+        B.wendeAutomatikAn(z);
+        zeichneWoche();
+      };
+      art.addEventListener('change', geaendertAbw);
+      von.addEventListener('change', () => {
+        if (von.value && !bis.value) bis.value = von.value;
+        geaendertAbw();
+      });
+      bis.addEventListener('change', geaendertAbw);
+      loeschen.addEventListener('click', () => {
+        z.abwesenheiten.splice(i, 1);
+        markiereGeaendert();
+        B.wendeAutomatikAn(z);
+        zeichneAbwesenheiten();
+        zeichneWoche();
+      });
+
+      const felder = el('div', 'abw-felder');
+      const lVon = el('label', 'abw-label');
+      lVon.append(el('span', null, 'Von'), von);
+      const lBis = el('label', 'abw-label');
+      lBis.append(el('span', null, 'Bis'), bis);
+      const lArt = el('label', 'abw-label');
+      lArt.append(el('span', null, 'Art'), art);
+      felder.append(lArt, lVon, lBis, loeschen);
+      zeile.append(felder, fehler);
+      liste.append(zeile);
+      pruefen();
+    });
+    $('abwNeu').textContent = z.abwesenheiten.length ? '+ weitere Abwesenheit' : '+ Abwesenheit hinzufügen';
+  }
+
+  /* ================================================================
+   *  Woche zeichnen
+   * ================================================================ */
+
+  function zeichneTage() {
+    const infos = B.infosDerWoche(z);
+    if (z.modus === 'tag') infos.forEach((info, i) => zeichneTagesKarte(i, info));
+    else {
+      infos.forEach((info, i) => zeichneWochenZeile(i, info));
+      zeichneWochenTexte();
     }
+    const text = B.zusammenfassung(z);
+    $('zusammenfassung').hidden = !text;
+    $('zusammenfassung').textContent = text ? 'Diese Woche: ' + text : '';
+    zeichneSummen();
+  }
+
+  function zeichneSummen() {
+    const s = B.summen(z);
+    const box = $('summen');
+    box.textContent = '';
+    if (z.modus === 'woche') {
+      const teil = (titel, wert) => {
+        const d = el('div', 'summe-teil');
+        d.append(el('span', null, titel), el('strong', null, Z.formatZeit(wert) + ' Std.'));
+        return d;
+      };
+      box.append(teil('Betrieb', s.betrieb), teil('Berufsschule', s.schule));
+      $('zeitBetrieb').textContent = Z.formatZeit(s.betrieb) + ' Std.';
+      $('zeitSchule').textContent = Z.formatZeit(s.schule) + ' Std.';
+    }
+    const gesamt = el('div', 'summe-teil summe-gesamt');
+    gesamt.append(el('span', null, 'Woche gesamt'), el('strong', 'summe-wert', Z.formatZeit(s.gesamt) + ' Std.'));
+    box.append(gesamt);
+  }
+
+  function zeichneWoche() {
+    const info = B.kwInfo(z.montag);
+    $('kwTitel').textContent = info.titel;
+    $('kwZeitraum').textContent = info.zeitraum;
+    $('kwHeute').hidden = K.montagDerWoche(new Date()).getTime() === z.montag.getTime();
+    zeichneNachweisNr();
+    zeichneTage();
+  }
+
+  function zeichneModus() {
+    document.querySelectorAll('input[name="modus"]').forEach((r) => {
+      r.checked = r.value === z.modus;
+      r.parentElement.classList.toggle('aktiv', r.checked);
+    });
+    $('tage').hidden = z.modus !== 'tag';
+    $('wochenbericht').hidden = z.modus !== 'woche';
+    $('wochenTexte').hidden = z.modus !== 'woche';
+  }
+
+  function zeichneAlles() {
+    zeichneKopf();
+    zeichneModus();
+    zeichneAbwesenheiten();
+    zeichneWoche();
+    leereFehler();
+  }
+
+  // Mitwachsende Textfelder
+  function wachse(t) {
+    if (!t.classList.contains('wachsend') || !t.offsetParent) return;
+    t.style.height = 'auto';
+    t.style.height = (t.scrollHeight + 2) + 'px';
+  }
+
+  /* ================================================================
+   *  Dialog
+   * ================================================================ */
+
+  function bestaetige(text) {
+    const dialog = $('dialog');
+    $('dialogText').textContent = text;
+    if (typeof dialog.showModal !== 'function') return Promise.resolve(window.confirm(text));
     return new Promise((resolve) => {
       dialog.returnValue = '';
       dialog.addEventListener('close', () => resolve(dialog.returnValue === 'ja'), { once: true });
       dialog.showModal();
-      $('wocheAbbrechen').focus();
+      $('dialogAbbrechen').focus();
     });
   }
 
-  function zeichneWoche() {
-    const info = kwInfo();
-    $('kwTitel').textContent = 'KW ' + info.woche + ' / ' + info.jahr;
-    $('kwZeitraum').textContent = info.zeitraum;
-    const heute = K.montagDerWoche(new Date());
-    $('kwHeute').hidden = heute.getTime() === zustand.montag.getTime();
-    zustand.tage.forEach((_, i) => zeichneTag(i));
-    aktualisiereSumme();
-  }
+  /* ================================================================
+   *  Woche & Modus wechseln
+   * ================================================================ */
 
-  // Neue Woche starten: Tageseinträge werden geleert, Kopfdaten bleiben.
   async function wechsleWoche(montag) {
-    if (hatTageseintraege() && !(await bestaetige())) return;
-    zustand.montag = montag;
-    zustand.tage = leereTage();
-    setzeFeiertage();
-    karten.forEach((k) => k.text.classList.remove('ungueltig'));
-    $('fehlermeldung').hidden = !document.querySelector('.ungueltig');
+    if (B.hatText(z) && !(await bestaetige('Einträge dieser Woche verwerfen und neue Woche starten?'))) return;
+    B.wechsleWoche(z, montag);
     $('mailBox').hidden = true;
+    leereFehler();
     zeichneWoche();
   }
 
-  /* ---------- Prüfung ---------- */
-
-  function pruefe() {
-    const fehler = [];
-    const markiere = (el) => { el.classList.add('ungueltig'); fehler.push(el); };
-
-    [['name', 'nameSonstige'], ['abteilung', 'abteilungSonstige']].forEach(([selId, freiId]) => {
-      const sel = $(selId);
-      if (!sel.value) markiere(sel);
-      else if (sel.value === SONSTIGE && !$(freiId).value.trim()) markiere($(freiId));
-    });
-    if (!$('jahr').value) markiere($('jahr'));
-
-    zustand.tage.forEach((tag, i) => {
-      if (istArbeitstag(tag.typ) && !tag.text.trim()) markiere(karten[i].text);
-    });
-
-    const meldung = $('fehlermeldung');
-    meldung.hidden = fehler.length === 0;
-    if (fehler.length) {
-      meldung.textContent = 'Bitte fülle die rot markierten Felder aus.';
-      fehler[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
-      fehler[0].focus({ preventScroll: true });
+  async function wechsleModus(modus) {
+    if (modus === z.modus) return;
+    if (B.hatText(z) && !(await bestaetige('Einträge verwerfen und zu ' + B.MODI[modus] + ' wechseln?'))) {
+      zeichneModus();
+      return;
     }
-    return fehler.length === 0;
+    B.wechsleModus(z, modus);
+    $('mailBox').hidden = true;
+    leereFehler();
+    zeichneModus();
+    zeichneTage();
   }
 
-  /* ---------- PDF ---------- */
+  /* ================================================================
+   *  Prüfung & Fehleranzeige
+   * ================================================================ */
+
+  function feldElement(feld) {
+    if (feld === 'name') return $('name').value === SONSTIGE ? $('nameSonstige') : $('name');
+    if (feld === 'abteilung') return $('abteilung').value === SONSTIGE ? $('abteilungSonstige') : $('abteilung');
+    if (feld === 'text-betrieb') return $('textBetrieb');
+    if (feld === 'text-schule') return $('textSchule');
+    const m = /^tag-(\d)-(art|zeit)$/.exec(feld);
+    if (m && z.modus === 'woche') return $('woche-' + m[1] + '-' + m[2]);
+    return $(feld);
+  }
+
+  function leereFehler() {
+    document.querySelectorAll('.ungueltig').forEach((e) => e.classList.remove('ungueltig'));
+    $('fehlermeldung').hidden = true;
+  }
+
+  function zeigeFehler(fehler) {
+    leereFehler();
+    const elemente = [];
+    fehler.forEach((f) => {
+      const e = feldElement(f.feld);
+      if (e) { e.classList.add('ungueltig'); elemente.push(e); }
+    });
+    const box = $('fehlermeldung');
+    box.textContent = '';
+    box.append(el('strong', null, 'Bitte fülle die rot markierten Felder aus:'));
+    const ul = el('ul');
+    fehler.slice(0, 6).forEach((f) => ul.append(el('li', null, f.text)));
+    if (fehler.length > 6) ul.append(el('li', null, '… und ' + (fehler.length - 6) + ' weitere'));
+    box.append(ul);
+    box.hidden = false;
+    if (elemente[0]) {
+      elemente[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const fokus = elemente[0].matches('input, select, textarea') ? elemente[0] : elemente[0].querySelector('input:not(:disabled), select, textarea');
+      if (fokus) fokus.focus({ preventScroll: true });
+    }
+  }
+
+  // Markierung verschwindet, sobald das Feld bearbeitet wird.
+  function entferneMarkierung(e) {
+    const markiert = e.target.closest && e.target.closest('.ungueltig');
+    if (markiert) markiert.classList.remove('ungueltig');
+    if (!document.querySelector('.ungueltig')) $('fehlermeldung').hidden = true;
+  }
+
+  /* ================================================================
+   *  Export
+   * ================================================================ */
 
   let logoDaten = null;
 
@@ -347,170 +638,65 @@ const ABTEILUNGEN = [
     else img.addEventListener('load', lesen, { once: true });
   }
 
-  function erstellePdf(daten) {
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
-    const seiteB = doc.internal.pageSize.getWidth();
-    const seiteH = doc.internal.pageSize.getHeight();
-    const rand = 15;
-    const unten = 22;
-
-    // Kopf: Logo + Titel
-    if (logoDaten) {
-      const h = 10;
-      doc.addImage(logoDaten.url, 'JPEG', rand, 12, h * logoDaten.verhaeltnis, h);
-    }
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(18);
-    doc.setTextColor(...FARBE.grau);
-    doc.text('Ausbildungsnachweis', seiteB - rand, 20, { align: 'right' });
-    doc.setDrawColor(...FARBE.mint);
-    doc.setLineWidth(0.8);
-    doc.line(rand, 27, seiteB - rand, 27);
-
-    // Kopfdaten
-    window.autoTable(doc, {
-      startY: 31,
-      margin: { left: rand, right: rand },
-      theme: 'plain',
-      styles: { font: 'helvetica', fontSize: 10, textColor: FARBE.dunkel, cellPadding: { top: 1.2, bottom: 1.2, left: 0, right: 2 } },
-      columnStyles: {
-        0: { fontStyle: 'bold', textColor: FARBE.grau, cellWidth: 32 },
-        1: { cellWidth: 63 },
-        2: { fontStyle: 'bold', textColor: FARBE.grau, cellWidth: 30 },
-        3: {}
-      },
-      body: [
-        ['Name:', daten.name, 'Kalenderwoche:', 'KW ' + daten.kw.woche + ' / ' + daten.kw.jahr],
-        ['Abteilung:', daten.abteilung, 'Zeitraum:', daten.kw.zeitraum],
-        ['Ausbildungsjahr:', daten.jahr + '. Ausbildungsjahr', '', '']
-      ]
-    });
-
-    // Wochentabelle
-    const zeilen = zustand.tage.map((tag, i) => {
-      const arbeit = istArbeitstag(tag.typ);
-      let art = tag.typ;
-      if (tag.typ === 'Feiertag' && tag.feiertag) art += '\n(' + tag.feiertag + ')';
-      return [
-        WOCHENTAGE[i] + '\n' + K.formatDatum(datumVonTag(i)),
-        art,
-        arbeit ? tag.text.trim() : '–',
-        formatStunden(arbeit ? tag.stunden : 0)
-      ];
-    });
-
-    window.autoTable(doc, {
-      startY: doc.lastAutoTable.finalY + 6,
-      margin: { left: rand, right: rand, top: 20, bottom: unten },
-      theme: 'grid',
-      head: [['Tag', 'Art', 'Tätigkeiten / Themen', 'Stunden']],
-      body: zeilen,
-      foot: [['', '', 'Wochensumme', formatStunden(daten.summe)]],
-      showFoot: 'lastPage',
-      showHead: 'everyPage',
-      rowPageBreak: 'auto',
-      styles: {
-        font: 'helvetica', fontSize: 10, textColor: FARBE.dunkel,
-        lineColor: [210, 214, 218], lineWidth: 0.2, cellPadding: 2.5, valign: 'top', overflow: 'linebreak'
-      },
-      headStyles: { fillColor: FARBE.blau, textColor: 255, fontStyle: 'bold' },
-      footStyles: { fillColor: FARBE.mintHell, textColor: FARBE.dunkel, fontStyle: 'bold' },
-      bodyStyles: { minCellHeight: 20 },
-      columnStyles: {
-        0: { cellWidth: 28, fontStyle: 'bold' },
-        1: { cellWidth: 30 },
-        2: {},
-        3: { cellWidth: 20, halign: 'right' }
-      },
-      didParseCell: (d) => {
-        if (d.section === 'foot' && d.column.index === 2) d.cell.styles.halign = 'right';
-        if (d.section === 'head' && d.column.index === 3) d.cell.styles.halign = 'right';
-      }
-    });
-
-    // Unterschriften
-    let y = doc.lastAutoTable.finalY + 24;
-    if (y + 10 > seiteH - unten) {
-      doc.addPage();
-      y = 40;
-    }
-    const breite = (seiteB - 2 * rand - 20) / 2;
-    doc.setDrawColor(...FARBE.grau);
-    doc.setLineWidth(0.3);
-    doc.line(rand, y, rand + breite, y);
-    doc.line(seiteB - rand - breite, y, seiteB - rand, y);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.setTextColor(...FARBE.grau);
-    doc.text('Datum, Unterschrift Auszubildende/r', rand, y + 5);
-    doc.text('Datum, Unterschrift Ausbilder/in', seiteB - rand - breite, y + 5);
-
-    // Fußzeile auf jeder Seite
-    const seiten = doc.getNumberOfPages();
-    for (let s = 1; s <= seiten; s++) {
-      doc.setPage(s);
-      doc.setDrawColor(...FARBE.mint);
-      doc.setLineWidth(0.5);
-      doc.line(rand, seiteH - 15, seiteB - rand, seiteH - 15);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8.5);
-      doc.setTextColor(...FARBE.grau);
-      doc.text('HYDROTEC Technologies AG', rand, seiteH - 10);
-      doc.text('Seite ' + s + ' von ' + seiten, seiteB - rand, seiteH - 10, { align: 'right' });
-    }
-
-    return doc;
+  function bibliothekenDa() {
+    if (window.jspdf && window.autoTable && window.PDFLib) return true;
+    alert('Die PDF-Bibliotheken konnten nicht geladen werden. Bitte die Seite neu laden.');
+    return false;
   }
 
-  function sammleDaten() {
-    const name = auswahlWert('name', 'nameSonstige').replace(/\s+/g, ' ');
-    const teile = name.split(' ');
-    return {
-      name,
-      nachname: teile[teile.length - 1],
-      abteilung: auswahlWert('abteilung', 'abteilungSonstige').replace(/\s+/g, ' '),
-      jahr: $('jahr').value,
-      kw: kwInfo(),
-      summe: wochensumme()
-    };
+  function herunterladen(bytes, dateiname) {
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    const a = el('a');
+    a.href = url;
+    a.download = dateiname;
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
   }
 
-  function dateiname(d) {
-    return 'Berichtsheft_' + dateinamenTeil(d.nachname) +
-      '_KW' + K.zweistellig(d.kw.woche) + '_' + d.kw.jahr +
-      '_' + dateinamenTeil(d.abteilung) + '.pdf';
+  async function beschaeftigt(knopf, arbeit) {
+    const text = knopf.textContent;
+    knopf.disabled = true;
+    knopf.textContent = 'Wird erstellt …';
+    try {
+      return await arbeit();
+    } catch (e) {
+      console.error(e);
+      alert('Beim Erstellen des PDFs ist ein Fehler aufgetreten: ' + e.message);
+    } finally {
+      knopf.disabled = false;
+      knopf.textContent = text;
+    }
   }
 
-  function zeigeMail(d) {
-    const kwText = 'KW ' + d.kw.woche + '/' + d.kw.jahr;
-    $('mailBetreff').value = 'Berichtsheft – ' + d.name + ' – ' + kwText + ' – ' + d.abteilung;
-    $('mailText').value =
-      'Hallo,\n\n' +
-      'anbei mein Ausbildungsnachweis für die ' + kwText + ' (' + d.kw.zeitraumKurz + ') aus der Abteilung ' + d.abteilung + '.\n\n' +
-      'Viele Grüße\n' +
-      d.name + '\n' +
-      'Auszubildende/r im ' + d.jahr + '. Ausbildungsjahr\n' +
-      'HYDROTEC Technologies AG';
+  async function exportiere(status) {
+    if (!bibliothekenDa()) return;
+    const entwurf = status === 'entwurf';
+    if (!entwurf) {
+      const fehler = B.pruefe(z);
+      if (fehler.length) { zeigeFehler(fehler); return; }
+    }
+    leereFehler();
+    await beschaeftigt($(entwurf ? 'exportEntwurf' : 'exportFertig'), async () => {
+      const doc = P.erzeugeBerichtPdf(z, { jsPDF: window.jspdf.jsPDF, autoTable: window.autoTable, logo: logoDaten, entwurf });
+      const bytes = await P.bettenEin(doc.output('arraybuffer'), B.serialisiere(z, status), window.PDFLib);
+      herunterladen(bytes, B.dateiname(z, entwurf));
+      geaendert = false;
+      if (entwurf) $('mailBox').hidden = true;
+      else zeigeMail();
+    });
+  }
+
+  function zeigeMail() {
+    const mail = B.mailTexte(z);
+    $('mailBetreff').value = mail.betreff;
+    $('mailText').value = mail.text;
+    $('outlookLink').href = B.mailtoLink(mail.betreff, mail.text);
     const box = $('mailBox');
     box.hidden = false;
     box.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
-
-  function exportiere() {
-    if (!pruefe()) return;
-    if (!window.jspdf || !window.autoTable) {
-      alert('Die PDF-Bibliothek konnte nicht geladen werden. Bitte die Seite neu laden.');
-      return;
-    }
-    const daten = sammleDaten();
-    const doc = erstellePdf(daten);
-    doc.save(dateiname(daten));
-    zustand.geaendert = false;
-    zeigeMail(daten);
-  }
-
-  /* ---------- Kopieren ---------- */
 
   async function kopiere(knopf) {
     const feld = $(knopf.dataset.kopieren);
@@ -523,45 +709,314 @@ const ABTEILUNGEN = [
       feld.select();
       try { ok = document.execCommand('copy'); } catch (e2) { ok = false; }
     }
-    const alt = 'Kopieren';
     knopf.textContent = ok ? 'Kopiert ✓' : 'Bitte manuell kopieren';
     knopf.classList.toggle('kopiert', ok);
     clearTimeout(knopf._timer);
     knopf._timer = setTimeout(() => {
-      knopf.textContent = alt;
+      knopf.textContent = 'Kopieren';
       knopf.classList.remove('kopiert');
     }, 2000);
   }
 
-  /* ---------- Start ---------- */
+  /* ================================================================
+   *  PDF hochladen & weiterschreiben
+   * ================================================================ */
 
-  function start() {
-    fuelleSelect($('name'), AZUBIS, 'Bitte wählen');
-    fuelleSelect($('abteilung'), ABTEILUNGEN, 'Bitte wählen');
-    verbindeSonstige('name', 'nameSonstige');
-    verbindeSonstige('abteilung', 'abteilungSonstige');
-    $('jahr').addEventListener('change', () => {
-      $('jahr').classList.remove('ungueltig');
-      markiereGeaendert();
+  function meldung(text, art) {
+    const m = $('uploadMeldung');
+    m.textContent = text;
+    m.className = 'meldung' + (art ? ' meldung-' + art : '');
+    m.hidden = !text;
+  }
+
+  async function ladeBericht(datei) {
+    if (!datei || !bibliothekenDa()) return;
+    meldung('');
+    const bytes = new Uint8Array(await datei.arrayBuffer());
+    const payload = await P.leseEingebettet(bytes, window.PDFLib);
+    if (!payload) {
+      meldung('Diese Datei wurde nicht mit dem Berichtsheft-Generator erstellt.', 'fehler');
+      return;
+    }
+    let geladen;
+    try {
+      geladen = B.deserialisiere(payload);
+    } catch (e) {
+      meldung(e.message, 'fehler');
+      return;
+    }
+    if (B.hatText(z) && !(await bestaetige('Aktuelle Einträge durch das hochgeladene PDF ersetzen?'))) return;
+    z = geladen.zustand;
+    geaendert = false;
+    $('mailBox').hidden = true;
+    zeichneAlles();
+    const kw = B.kwInfo(z.montag);
+    meldung('„' + datei.name + '“ geladen: ' + kw.kurz + ', ' + B.MODI[z.modus] +
+      (geladen.status === 'entwurf' ? ' (Entwurf)' : '') + '. Du kannst jetzt weiterschreiben.', 'ok');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  /* ================================================================
+   *  Gesamt-Berichtsheft
+   * ================================================================ */
+
+  let sammlung = [];
+  let auswahl = {};
+  let naechsteId = 1;
+
+  async function fuegeHinzu(dateien) {
+    if (!bibliothekenDa()) return;
+    for (const datei of dateien) {
+      const bytes = new Uint8Array(await datei.arrayBuffer());
+      const eintrag = { id: 'f' + (naechsteId++), dateiname: datei.name, bytes, ok: false, einschliessen: false };
+      const payload = await P.leseEingebettet(bytes.slice(), window.PDFLib);
+      if (payload) {
+        try {
+          const g = B.deserialisiere(payload);
+          Object.assign(eintrag, { ok: true, status: g.status, exportiertAm: g.exportiertAm, zustand: g.zustand, einschliessen: g.status !== 'entwurf' });
+        } catch (e) {
+          eintrag.fehler = e.message;
+        }
+      } else {
+        eintrag.fehler = 'Nicht mit dem Berichtsheft-Generator erstellt';
+      }
+      sammlung.push(eintrag);
+    }
+    zeichneSammlung();
+  }
+
+  function zeichneSammlung() {
+    $('sammelBereich').hidden = sammlung.length === 0;
+    const tbody = $('sammelTabelle').querySelector('tbody');
+    tbody.textContent = '';
+    const sortiert = sammlung.slice().sort((a, b) => {
+      if (a.ok !== b.ok) return a.ok ? -1 : 1;
+      return a.ok ? a.zustand.montag - b.zustand.montag : 0;
+    });
+    sortiert.forEach((e) => {
+      const tr = el('tr', e.ok ? (e.status === 'entwurf' ? 'zeile-entwurf' : '') : 'zeile-fremd');
+      const mit = el('td');
+      const haken = el('input');
+      haken.type = 'checkbox';
+      haken.checked = e.einschliessen;
+      haken.disabled = !e.ok;
+      haken.setAttribute('aria-label', 'In Gesamt-PDF aufnehmen: ' + e.dateiname);
+      haken.addEventListener('change', () => { e.einschliessen = haken.checked; zeichneSammlung(); });
+      mit.append(haken);
+
+      const status = el('td');
+      if (!e.ok) status.append(el('span', 'chip chip-krank', 'Fremde Datei'));
+      else if (e.status === 'entwurf') status.append(el('span', 'chip chip-ferien', 'Entwurf'));
+      else status.append(el('span', 'chip chip-feiertag', 'Fertig'));
+
+      const kw = e.ok ? B.kwInfo(e.zustand.montag).kurz : '—';
+      const loeschen = el('button', 'abw-loeschen', '✕');
+      loeschen.type = 'button';
+      loeschen.setAttribute('aria-label', 'Datei entfernen: ' + e.dateiname);
+      loeschen.addEventListener('click', () => {
+        sammlung = sammlung.filter((x) => x !== e);
+        zeichneSammlung();
+      });
+      const datei = el('td', 'datei', e.dateiname);
+      if (e.fehler) datei.append(el('div', 'klein-fehler', e.fehler));
+      tr.append(mit, el('td', 'kw', kw), datei, status,
+        el('td', null, e.ok ? e.zustand.kopf.name || '—' : '—'),
+        el('td', null, e.ok ? e.zustand.kopf.abteilung || '—' : '—'),
+        el('td', null, e.ok ? B.MODI[e.zustand.modus] : '—'));
+      const td = el('td');
+      td.append(loeschen);
+      tr.append(td);
+      tbody.append(tr);
+    });
+    zeichnePruefung();
+  }
+
+  function zeichnePruefung() {
+    const box = $('sammelPruefung');
+    box.textContent = '';
+    const a = B.analysiereSammlung(sammlung, auswahl);
+    $('gesamtErstellen').disabled = a.gewaehlt.length === 0;
+    if (!a.gewaehlt.length) {
+      box.append(el('p', 'pruef-info', 'Keine Nachweise ausgewählt.'));
+      return a;
+    }
+    const erste = B.kwInfo(a.gewaehlt[0].zustand.montag).kurz;
+    const letzte = B.kwInfo(a.gewaehlt[a.gewaehlt.length - 1].zustand.montag).kurz;
+    box.append(el('p', 'pruef-info', a.gewaehlt.length + (a.gewaehlt.length === 1 ? ' Nachweis' : ' Nachweise') +
+      ' · ' + erste + ' bis ' + letzte));
+
+    const fremd = sammlung.filter((e) => !e.ok).length;
+    if (fremd) box.append(el('p', 'pruef-warnung', fremd + (fremd === 1 ? ' Datei wurde' : ' Dateien wurden') + ' nicht mit dem Berichtsheft-Generator erstellt und werden ignoriert.'));
+    const entwuerfe = sammlung.filter((e) => e.ok && e.status === 'entwurf');
+    if (entwuerfe.length) {
+      const drin = entwuerfe.filter((e) => e.einschliessen).length;
+      box.append(el('p', 'pruef-warnung', entwuerfe.length + (entwuerfe.length === 1 ? ' Entwurf' : ' Entwürfe') +
+        (drin ? ' – davon ' + drin + ' eingeschlossen.' : ' – nicht eingeschlossen (Haken setzen zum Aufnehmen).')));
+    }
+    if (a.namen.length > 1) box.append(el('p', 'pruef-warnung', 'Achtung: unterschiedliche Namen – ' + a.namen.join(', ')));
+
+    a.duplikate.forEach((d) => {
+      const fs = el('fieldset', 'duplikat');
+      fs.append(el('legend', null, d.titel + ' ist mehrfach vorhanden – welche Datei gilt?'));
+      d.kandidaten.forEach((k) => {
+        const label = el('label');
+        const radio = el('input');
+        radio.type = 'radio';
+        radio.name = 'dup-' + d.schluessel;
+        radio.checked = k.id === d.gewaehlt;
+        radio.addEventListener('change', () => { auswahl[d.schluessel] = k.id; zeichnePruefung(); });
+        const datum = new Date(k.exportiertAm);
+        const wann = isNaN(datum) ? '' : ' – exportiert ' + K.formatDatum(datum) + ' ' + K.zweistellig(datum.getHours()) + ':' + K.zweistellig(datum.getMinutes());
+        label.append(radio, document.createTextNode(' ' + k.dateiname + wann + (k.status === 'entwurf' ? ' (Entwurf)' : '')));
+        fs.append(label);
+      });
+      box.append(fs);
     });
 
-    baueTage();
-    setzeFeiertage();
-    zeichneWoche();
+    box.append(a.fehlend.length
+      ? el('p', 'pruef-fehlend', 'Fehlend: ' + a.fehlendText)
+      : el('p', 'pruef-ok', '✓ Keine fehlenden Wochen'));
+    return a;
+  }
 
-    $('kwZurueck').addEventListener('click', () => wechsleWoche(K.addTage(zustand.montag, -7)));
-    $('kwVor').addEventListener('click', () => wechsleWoche(K.addTage(zustand.montag, 7)));
+  async function erstelleGesamt() {
+    if (!bibliothekenDa()) return;
+    const a = B.analysiereSammlung(sammlung, auswahl);
+    if (!a.gewaehlt.length) return;
+    const nachId = {};
+    sammlung.forEach((e) => { nachId[e.id] = e; });
+    await beschaeftigt($('gesamtErstellen'), async () => {
+      const bytes = await P.erzeugeGesamtPdf(a, {
+        jsPDF: window.jspdf.jsPDF, autoTable: window.autoTable, PDFLib: window.PDFLib, logo: logoDaten,
+        bytesVon: (id) => nachId[id].bytes.slice()
+      });
+      herunterladen(bytes, B.gesamtDateiname(a));
+    });
+  }
+
+  /* ================================================================
+   *  Tabs & Drag and Drop
+   * ================================================================ */
+
+  function zeigeTab(name) {
+    const bericht = name === 'bericht';
+    $('tabBericht').setAttribute('aria-selected', String(bericht));
+    $('tabGesamt').setAttribute('aria-selected', String(!bericht));
+    $('panelBericht').hidden = !bericht;
+    $('panelGesamt').hidden = bericht;
+    if (bericht) zeichneTage();
+  }
+
+  function verbindeDragDrop() {
+    let tiefe = 0;
+    const overlay = $('dropOverlay');
+    const hatDateien = (e) => e.dataTransfer && Array.from(e.dataTransfer.types || []).indexOf('Files') >= 0;
+    document.addEventListener('dragenter', (e) => {
+      if (!hatDateien(e)) return;
+      tiefe++;
+      overlay.firstElementChild.textContent = $('panelGesamt').hidden ? 'PDF hier ablegen zum Weiterschreiben' : 'PDFs hier ablegen';
+      overlay.hidden = false;
+    });
+    document.addEventListener('dragleave', (e) => {
+      if (!hatDateien(e)) return;
+      tiefe = Math.max(0, tiefe - 1);
+      if (!tiefe) overlay.hidden = true;
+    });
+    document.addEventListener('dragover', (e) => {
+      if (hatDateien(e)) e.preventDefault();
+    });
+    document.addEventListener('drop', (e) => {
+      if (!hatDateien(e)) return;
+      e.preventDefault();
+      tiefe = 0;
+      overlay.hidden = true;
+      const dateien = Array.from(e.dataTransfer.files);
+      if (!dateien.length) return;
+      if ($('panelGesamt').hidden) ladeBericht(dateien[0]);
+      else fuegeHinzu(dateien);
+    });
+  }
+
+  /* ================================================================
+   *  Start
+   * ================================================================ */
+
+  function start() {
+    fuelleSelect($('name'), AZUBIS);
+    fuelleSelect($('abteilung'), ABTEILUNGEN);
+    verbindeAuswahl('name', 'nameSonstige', 'name');
+    verbindeAuswahl('abteilung', 'abteilungSonstige', 'abteilung');
+    $('jahr').addEventListener('change', () => { z.kopf.jahr = $('jahr').value; markiereGeaendert(); });
+    $('beginn').addEventListener('change', () => {
+      z.kopf.beginn = K.parseIsoDatum($('beginn').value) ? $('beginn').value : '';
+      z.kopf.nachweisNrManuell = false;
+      B.aktualisiereNachweisNr(z);
+      markiereGeaendert();
+      zeichneNachweisNr();
+    });
+    $('nachweisNr').addEventListener('input', () => {
+      const feld = $('nachweisNr');
+      feld.value = feld.value.replace(/\D/g, '');
+      z.kopf.nachweisNr = feld.value;
+      z.kopf.nachweisNrManuell = !!z.kopf.beginn;
+      markiereGeaendert();
+    });
+    $('nachweisNr').addEventListener('blur', zeichneNachweisNr);
+
+    document.querySelectorAll('input[name="modus"]').forEach((r) => {
+      r.addEventListener('change', () => wechsleModus(r.value));
+    });
+
+    baueTagesKarten();
+    baueWochenleiste();
+    verbindeBlock('textBetrieb', 'betrieb');
+    verbindeBlock('textUnterweisung', 'unterweisung');
+    verbindeBlock('textSchule', 'schule');
+
+    $('abwNeu').addEventListener('click', () => {
+      z.abwesenheiten.push({ art: 'Urlaub', von: '', bis: '' });
+      markiereGeaendert();
+      zeichneAbwesenheiten();
+      const selects = $('abwListe').querySelectorAll('select');
+      selects[selects.length - 1].focus();
+    });
+
+    $('kwZurueck').addEventListener('click', () => wechsleWoche(K.addTage(z.montag, -7)));
+    $('kwVor').addEventListener('click', () => wechsleWoche(K.addTage(z.montag, 7)));
     $('kwHeute').addEventListener('click', () => wechsleWoche(K.montagDerWoche(new Date())));
 
-    $('pdfExport').addEventListener('click', exportiere);
+    $('exportEntwurf').addEventListener('click', () => exportiere('entwurf'));
+    $('exportFertig').addEventListener('click', () => exportiere('fertig'));
     document.querySelectorAll('[data-kopieren]').forEach((b) => b.addEventListener('click', () => kopiere(b)));
 
+    $('uploadKnopf').addEventListener('click', () => $('uploadDatei').click());
+    $('uploadDatei').addEventListener('change', () => {
+      const datei = $('uploadDatei').files[0];
+      $('uploadDatei').value = '';
+      ladeBericht(datei);
+    });
+
+    $('tabBericht').addEventListener('click', () => zeigeTab('bericht'));
+    $('tabGesamt').addEventListener('click', () => zeigeTab('gesamt'));
+    $('sammelKnopf').addEventListener('click', () => $('sammelDatei').click());
+    $('sammelDatei').addEventListener('change', () => {
+      const dateien = Array.from($('sammelDatei').files);
+      $('sammelDatei').value = '';
+      fuegeHinzu(dateien);
+    });
+    $('sammelLeeren').addEventListener('click', () => { sammlung = []; auswahl = {}; zeichneSammlung(); });
+    $('gesamtErstellen').addEventListener('click', erstelleGesamt);
+    verbindeDragDrop();
+
+    ['input', 'change', 'click'].forEach((t) => document.addEventListener(t, entferneMarkierung, true));
+    window.addEventListener('resize', () => document.querySelectorAll('textarea.wachsend').forEach(wachse));
     window.addEventListener('beforeunload', (e) => {
-      if (!zustand.geaendert) return;
+      if (!geaendert) return;
       e.preventDefault();
       e.returnValue = '';
     });
 
+    zeichneAlles();
     ladeLogo();
   }
 

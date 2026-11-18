@@ -100,6 +100,29 @@
     return zweistellig(d.getDate()) + '.' + zweistellig(d.getMonth() + 1) + '.' + d.getFullYear();
   }
 
+  // TT.MM. (ohne Jahr)
+  function formatKurz(d) {
+    return zweistellig(d.getDate()) + '.' + zweistellig(d.getMonth() + 1) + '.';
+  }
+
+  // JJJJ-MM-TT (Format von <input type="date"> und im JSON)
+  function isoDatum(d) {
+    return d.getFullYear() + '-' + zweistellig(d.getMonth() + 1) + '-' + zweistellig(d.getDate());
+  }
+
+  // JJJJ-MM-TT → Date oder null
+  function parseIsoDatum(s) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || ''));
+    if (!m) return null;
+    var d = datum(+m[1], +m[2], +m[3]);
+    return d.getMonth() + 1 === +m[2] && d.getDate() === +m[3] ? d : null;
+  }
+
+  // Anzahl Wochen zwischen zwei Montagen (b − a)
+  function wochenZwischen(a, b) {
+    return Math.round((montagDerWoche(b) - montagDerWoche(a)) / (7 * 86400000));
+  }
+
   var api = {
     datum: datum,
     addTage: addTage,
@@ -110,6 +133,11 @@
     feiertageNiedersachsen: feiertageNiedersachsen,
     feiertagName: feiertagName,
     formatDatum: formatDatum,
+    formatKurz: formatKurz,
+    isoDatum: isoDatum,
+    parseIsoDatum: parseIsoDatum,
+    wochenZwischen: wochenZwischen,
+    gleicherTag: gleicherTag,
     zweistellig: zweistellig
   };
 

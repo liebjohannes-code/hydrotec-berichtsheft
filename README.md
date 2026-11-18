@@ -1,22 +1,70 @@
 # Berichtsheft-Generator – HYDROTEC Technologies AG
 
-Schlanke Web-App, mit der die Auszubildenden der HYDROTEC Technologies AG ihren
-wöchentlichen Ausbildungsnachweis (Berichtsheft) ausfüllen und als PDF exportieren.
+Web-App, mit der die Auszubildenden der HYDROTEC Technologies AG ihre wöchentlichen
+Ausbildungsnachweise (Berichtsheft) schreiben, als PDF exportieren, später weiterschreiben
+und am Ende zu einem Gesamt-Berichtsheft zusammenführen.
 
-## Was die App macht
+## Funktionen
 
-- **Kopfdaten:** Name, Abteilung und Ausbildungsjahr per Dropdown (Name und Abteilung auch als Freitext über „Sonstige“).
-- **Kalenderwoche:** Beim Öffnen wird automatisch die aktuelle ISO-Kalenderwoche angezeigt. Mit ◀ ▶ blättert man zur Vor- oder Folgewoche. Beim Wochenwechsel werden die Tageseinträge geleert (vorher kommt eine Rückfrage, falls schon Text eingetragen ist). Name, Abteilung und Ausbildungsjahr bleiben erhalten.
-- **Tage Montag bis Freitag:** Für jeden Tag wählt man Betrieb, Berufsschule, Urlaub, Krank oder Feiertag. Bei Betrieb und Berufsschule trägt man Tätigkeiten bzw. Themen und die Stunden ein (Standard: 8 h Betrieb, 6 h Schule).
-- **Feiertage Niedersachsen** werden automatisch erkannt (Ostern wird per Gauß/Meeus-Formel berechnet, keine API) und können manuell überschrieben werden.
-- **PDF-Export** (A4, im Browser mit jsPDF): Logo, Kopfdaten, Wochentabelle, Wochensumme, Unterschriftslinien, Fußzeile mit Seitenzahl.
-  Dateiname: `Berichtsheft_Nachname_KW44_2026_Abteilung.pdf`
-- **Mail-Vorlage:** Nach dem Export erscheinen Betreff und Mailtext mit „Kopieren“-Buttons.
-- **Datenschutz:** Es wird **nichts gespeichert**: kein Server, kein localStorage, keine Cookies. Beim Verlassen der Seite mit ungespeicherten Eingaben warnt der Browser.
+### Bericht schreiben
 
-## Namen und Abteilungen ändern
+- **Kopfdaten:** Name, Abteilung (beide auch als Freitext über „Sonstige“), Ausbildungsjahr,
+  Ausbildungsbeginn und Nachweis-Nr.
+- **Nachweis-Nr.:** Ist der Ausbildungsbeginn eingetragen, wird die Nr. automatisch berechnet
+  (Woche des Ausbildungsbeginns = Nr. 1, jede Kalenderwoche zählt, auch Urlaubswochen).
+  Sie kann manuell überschrieben werden; „automatisch berechnen“ stellt sie wieder zurück.
+- **Tagesbericht | Wochenbericht** (Umschalter unter den Kopfdaten, Standard: Tagesbericht)
+  - *Tagesbericht:* eine Karte pro Tag mit Art (Betrieb, Berufsschule, Urlaub, Krank, Feiertag), Text und Zeit.
+  - *Wochenbericht:* kompakte Wochenübersicht (Tag, Art, Zeit) und drei mitwachsende Textfelder:
+    „Betriebliche Tätigkeiten“ (Pflicht bei mind. einem Betriebstag), „Unterweisungen / Schulungen“
+    (optional) und „Berufsschule – Themen / Fächer“ (Pflicht bei mind. einem Schultag, ausgeblendet,
+    wenn in der Woche kein Schultag möglich ist).
+  - Wechsel mit bereits eingetragenem Text nur nach Rückfrage. Kopfdaten, KW und Abwesenheiten bleiben.
+- **Zeiten in Std:Min** (Stunden- und Minutenfeld, 0:00 bis 12:00). Nichts ist vorbelegt.
+  Summen immer in Std:Min, im Wochenbericht zusätzlich getrennt nach Betrieb und Berufsschule.
+- **Kalenderwoche:** Beim Öffnen die aktuelle ISO-Woche; ◀ ▶ und „Zur aktuellen Woche“.
+  Beim Wochenwechsel werden Tage, Zeiten und Texte geleert (mit Rückfrage, wenn Text vorhanden ist).
+  Kopfdaten, Modus, Ausbildungsbeginn und Abwesenheiten bleiben, die Nachweis-Nr. wird neu berechnet.
+- **Abwesenheiten & Ferien:** Einträge mit Art (Urlaub, Krank, Ferien) und Von-/Bis-Datum, auch über
+  mehrere Wochen. Jede Woche zeigt automatisch ihren Anteil. *Ferien* steht für bewegliche Ferientage
+  der Schule: Betrieb möglich, Berufsschule nicht.
+- **Automatik:** Gesetzliche Feiertage in Niedersachsen (Ostern nach Gauß/Meeus) und die Schulferien
+  Niedersachsen werden erkannt. Feiertage haben Vorrang vor Ferien und Abwesenheiten, Krank vor Urlaub.
+  An Ferientagen ist „Berufsschule“ nicht wählbar. Unter der Wochenübersicht steht eine Zusammenfassung,
+  z. B. „Krank: 04.11.–05.11.2026 (2 Tage) · Feiertag: 31.10. Reformationstag · Ferien: 12.10.–16.10.2026“.
+- **Export**
+  - *Als Entwurf exportieren:* ohne Prüfung, diagonaler Stempel „ENTWURF“, Dateiname mit `_Entwurf`.
+  - *Fertig exportieren:* prüft Name, Abteilung, Ausbildungsjahr, Nachweis-Nr., Art und Zeit an jedem
+    Tag sowie die Pflichttexte. Fehlende Felder werden rot markiert. Danach erscheint die Mail-Box.
+  - Dateiname: `Berichtsheft_Nachname_KW44_2026_Abteilung.pdf`
+- **Mail-Vorlage:** Betreff und Mailtext (mit Nachweis-Nr. und Berichtsart) mit „Kopieren“-Buttons,
+  dazu „In Outlook öffnen“ (mailto-Link ohne festen Empfänger). Das PDF muss man selbst anhängen.
+- **PDF hochladen & weiterschreiben:** Jedes exportierte PDF (Entwurf oder fertig) enthält unsichtbar
+  alle Formulardaten. Per Button oder Drag & Drop hochladen: Das Formular wird komplett wiederhergestellt
+  und springt zur richtigen KW.
 
-Ganz oben in [`public/app.js`](public/app.js) stehen zwei Listen:
+### Gesamt-Berichtsheft erstellen
+
+Im zweiten Tab mehrere exportierte PDFs auswählen oder hineinziehen. Die App
+- sortiert nach Jahr/KW, markiert fremde Dateien und Entwürfe (Entwürfe sind standardmäßig
+  ausgeschlossen, per Haken einschließbar),
+- warnt bei unterschiedlichen Namen,
+- lässt bei doppelten Wochen wählen, welche Datei gilt (Standard: die zuletzt exportierte),
+- zeigt fehlende Wochen zwischen Ausbildungsbeginn (sonst erster Woche) und letzter Woche,
+- erstellt ein PDF mit Deckblatt, Übersichtstabelle und allen Originalseiten in der richtigen
+  Reihenfolge: `Berichtsheft_Gesamt_Nachname_KW05-2026_bis_KW44-2026.pdf`.
+
+### Datenschutz
+
+Es wird **nichts gespeichert und nichts hochgeladen**: kein Server, kein localStorage, keine Cookies.
+Die Daten leben nur im Formular und im exportierten PDF. Beim Verlassen der Seite mit ungespeicherten
+Eingaben warnt der Browser.
+
+## Pflege
+
+### Namen und Abteilungen
+
+Ganz oben in [`public/app.js`](public/app.js):
 
 ```js
 const AZUBIS = [
@@ -32,46 +80,72 @@ const ABTEILUNGEN = [
 ];
 ```
 
-Einträge einfach hinzufügen, löschen oder umbenennen (jeweils in einfachen
-Anführungszeichen, mit Komma getrennt). Der Eintrag „Sonstige“ wird automatisch
-angehängt. Nach dem Commit auf `main` ist die Änderung automatisch online (siehe unten).
+Einträge hinzufügen, löschen oder umbenennen (in einfachen Anführungszeichen, mit Komma getrennt).
+„Sonstige“ wird automatisch angehängt.
+
+### Schulferien
+
+Ganz oben in [`public/ferien.js`](public/ferien.js) steht die Liste `SCHULFERIEN`, aktuell bis
+einschließlich Weihnachten 2027/28. **Für 2028 ergänzen**, z. B.:
+
+```js
+{ name: 'Osterferien', von: '2028-MM-TT', bis: '2028-MM-TT' },
+{ name: 'Ferientag',   von: '2028-MM-TT', bis: '2028-MM-TT' },   // einzelner Tag: von = bis
+```
+
+Datum im Format JJJJ-MM-TT, beide Tage inklusive, Liste chronologisch sortiert. Ein Test prüft
+die Reihenfolge. Die offiziellen Termine veröffentlicht das Niedersächsische Kultusministerium.
+Die gesetzlichen Feiertage werden berechnet und müssen nicht gepflegt werden.
+
+Nach dem Commit auf `main` ist jede Änderung automatisch online (siehe Deployment).
 
 ## Projektstruktur
 
 ```
-public/                 ← alles, was ausgeliefert wird
-  index.html
-  style.css
-  app.js                ← App-Logik, Namens- und Abteilungslisten
-  kalender.js           ← Kalenderwochen, Ostern, Feiertage
+public/                   ← alles, was ausgeliefert wird (kein Build-Schritt)
+  index.html, style.css
+  app.js                  ← Oberfläche, Namens- und Abteilungslisten
+  kalender.js             ← ISO-Kalenderwochen, Ostern, Feiertage
+  ferien.js               ← Schulferien Niedersachsen (Liste zum Pflegen)
+  zeit.js                 ← Std:Min parsen, formatieren, summieren
+  bericht.js              ← Fachlogik: Abwesenheiten, Nachweis-Nr., Prüfung, JSON, Sammel-Analyse
+  pdf.js                  ← PDF-Erzeugung, Daten einbetten/auslesen, Gesamt-PDF
   logo.jpg
-  vendor/               ← jsPDF + jspdf-autotable (lokal, kein CDN)
-tests/kalender.test.js  ← Tests für KW- und Feiertagsberechnung
-tests/browser.test.js   ← Browser-Test der Oberfläche (Playwright)
-wrangler.jsonc          ← Cloudflare-Konfiguration (nur Static Assets)
+  vendor/                 ← jsPDF, jspdf-autotable, pdf-lib (lokal, kein CDN)
+tests/                    ← Unit-Tests (Node) und Browser-Test (Playwright)
+wrangler.jsonc            ← Cloudflare-Konfiguration (nur Static Assets)
 ```
 
-Es gibt kein Framework und keinen Build-Schritt.
+Die Logik-Module funktionieren im Browser und in Node.js und sind dadurch ohne Browser testbar.
+
+### Eingebettete Daten
+
+Beim Export wird `B.serialisiere(…)` als JSON zweifach ins PDF geschrieben: als Dateianhang
+`berichtsheft.json` und als Base64-Eintrag `HydrotecBerichtsheft` im Dokument-Info-Verzeichnis
+(Rückfallebene). Das JSON hat die Felder `schema: "hydrotec-berichtsheft"` und `version: 1`.
+Bei Änderungen am Format die Version erhöhen und in `migriere()` (bericht.js) alte Versionen umwandeln,
+damit ältere PDFs weiter hochgeladen werden können.
 
 ## Lokal ausprobieren
 
-Einen beliebigen statischen Webserver im Ordner `public` starten, z. B.:
+Einen statischen Webserver im Ordner `public` starten, z. B.:
 
 ```bash
 cd public && python3 -m http.server 8080
 ```
 
-Dann <http://localhost:8080> öffnen. (Direktes Öffnen der `index.html` per Doppelklick
-funktioniert auch, dann fehlt aber ggf. das Logo im PDF.)
+Dann <http://localhost:8080> öffnen.
 
-Tests (Node.js 18+):
+## Tests
+
+Unit-Tests (Node.js 18+, keine Installation nötig):
 
 ```bash
-node --test tests/kalender.test.js
+node --test tests/kalender.test.js tests/ferien-zeit.test.js tests/bericht.test.js tests/pdf.test.js
 ```
 
-Browser-Test (klickt die App in Chromium durch; benötigt [Playwright](https://playwright.dev),
-wird sonst übersprungen):
+Browser-Tests (klicken die App in Chromium durch; benötigen [Playwright](https://playwright.dev),
+werden sonst übersprungen):
 
 ```bash
 node --test tests/browser.test.js
@@ -104,8 +178,12 @@ npx wrangler deploy
 
 ## Bibliotheken aktualisieren
 
-Die Dateien in `public/vendor/` stammen aus den npm-Paketen
-[`jspdf`](https://www.npmjs.com/package/jspdf) (`dist/jspdf.umd.min.js`, v4.2.1) und
-[`jspdf-autotable`](https://www.npmjs.com/package/jspdf-autotable)
-(`dist/jspdf.plugin.autotable.min.js`, v5.0.9), beide MIT-lizenziert.
-Zum Aktualisieren die neuen Dateien aus den Paketen an dieselbe Stelle kopieren.
+Die Dateien in `public/vendor/` stammen aus npm-Paketen (alle MIT-lizenziert):
+
+| Datei | Paket | Version |
+|---|---|---|
+| `jspdf.umd.min.js` | [`jspdf`](https://www.npmjs.com/package/jspdf) (`dist/`) | 4.2.1 |
+| `jspdf.plugin.autotable.min.js` | [`jspdf-autotable`](https://www.npmjs.com/package/jspdf-autotable) (`dist/`) | 5.0.9 |
+| `pdf-lib.min.js` | [`pdf-lib`](https://www.npmjs.com/package/pdf-lib) (`dist/`) | 1.17.1 |
+
+Zum Aktualisieren die neuen Dateien aus den Paketen an dieselbe Stelle kopieren und die Tests laufen lassen.

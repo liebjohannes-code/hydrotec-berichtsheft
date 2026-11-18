@@ -18,69 +18,184 @@
     </div>
   </header>
 
-  <main class="container">
-    <section class="card" aria-labelledby="h-kopf">
-      <h2 id="h-kopf">Deine Angaben</h2>
-      <div class="kopf-grid">
-        <div class="feld">
-          <label for="name">Name</label>
-          <select id="name"></select>
-          <input type="text" id="nameSonstige" class="sonstige" placeholder="Vor- und Nachname" autocomplete="name" hidden>
-        </div>
-        <div class="feld">
-          <label for="abteilung">Abteilung</label>
-          <select id="abteilung"></select>
-          <input type="text" id="abteilungSonstige" class="sonstige" placeholder="Abteilung eingeben" hidden>
-        </div>
-        <div class="feld">
-          <label for="jahr">Ausbildungsjahr</label>
-          <select id="jahr">
-            <option value="">Bitte wählen</option>
-            <option value="1">1. Ausbildungsjahr</option>
-            <option value="2">2. Ausbildungsjahr</option>
-            <option value="3">3. Ausbildungsjahr</option>
-          </select>
-        </div>
-      </div>
-    </section>
-
-    <section class="kw-nav" aria-label="Kalenderwoche">
-      <button type="button" class="pfeil" id="kwZurueck" aria-label="Vorherige Woche">◀</button>
-      <div class="kw-mitte">
-        <div class="kw-titel" id="kwTitel" aria-live="polite">KW – / –</div>
-        <div class="kw-zeitraum" id="kwZeitraum"></div>
-        <button type="button" class="link-btn" id="kwHeute" hidden>Zur aktuellen Woche</button>
-      </div>
-      <button type="button" class="pfeil" id="kwVor" aria-label="Nächste Woche">▶</button>
-    </section>
-
-    <section id="tage" class="tage" aria-label="Wochentage"></section>
-
-    <section class="summe card">
-      <span>Wochensumme</span>
-      <strong id="wochensumme">0 Std.</strong>
-    </section>
-
-    <div class="aktion">
-      <p class="fehlermeldung" id="fehlermeldung" role="alert" hidden></p>
-      <button type="button" class="btn-primaer" id="pdfExport">PDF exportieren</button>
+  <nav class="tabs" role="tablist" aria-label="Bereiche">
+    <div class="tabs-inner">
+      <button type="button" role="tab" id="tabBericht" aria-controls="panelBericht" aria-selected="true">Bericht schreiben</button>
+      <button type="button" role="tab" id="tabGesamt" aria-controls="panelGesamt" aria-selected="false">Gesamt-Berichtsheft erstellen</button>
     </div>
+  </nav>
 
-    <section class="card mail-box" id="mailBox" hidden aria-labelledby="h-mail">
-      <h2 id="h-mail">E-Mail an die Ausbildung</h2>
-      <p class="hinweis">✓ PDF wurde heruntergeladen – bitte an die Mail anhängen.</p>
+  <main class="container">
+    <!-- ================= Bericht schreiben ================= -->
+    <section id="panelBericht" role="tabpanel" aria-labelledby="tabBericht">
+      <div class="upload-leiste">
+        <div>
+          <strong>Schon angefangen?</strong>
+          <span class="upload-text">Exportiertes PDF hochladen (oder hierher ziehen) und weiterschreiben.</span>
+        </div>
+        <button type="button" class="btn-sekundaer" id="uploadKnopf">PDF hochladen &amp; weiterschreiben</button>
+        <input type="file" id="uploadDatei" accept="application/pdf,.pdf" hidden>
+      </div>
+      <p class="meldung" id="uploadMeldung" role="status" hidden></p>
 
-      <label for="mailBetreff">Betreff</label>
-      <div class="kopier-zeile">
-        <input type="text" id="mailBetreff" readonly>
-        <button type="button" class="btn-sekundaer" data-kopieren="mailBetreff">Kopieren</button>
+      <section class="card" aria-labelledby="h-kopf">
+        <h2 id="h-kopf">Deine Angaben</h2>
+        <div class="kopf-grid">
+          <div class="feld">
+            <label for="name">Name</label>
+            <select id="name"></select>
+            <input type="text" id="nameSonstige" class="sonstige" placeholder="Vor- und Nachname" autocomplete="name" spellcheck="true" lang="de" hidden>
+          </div>
+          <div class="feld">
+            <label for="abteilung">Abteilung</label>
+            <select id="abteilung"></select>
+            <input type="text" id="abteilungSonstige" class="sonstige" placeholder="Abteilung eingeben" spellcheck="true" lang="de" hidden>
+          </div>
+          <div class="feld">
+            <label for="jahr">Ausbildungsjahr</label>
+            <select id="jahr">
+              <option value="">Bitte wählen</option>
+              <option value="1">1. Ausbildungsjahr</option>
+              <option value="2">2. Ausbildungsjahr</option>
+              <option value="3">3. Ausbildungsjahr</option>
+            </select>
+          </div>
+          <div class="feld">
+            <label for="beginn">Ausbildungsbeginn</label>
+            <input type="date" id="beginn" min="2000-01-01" max="2099-12-31">
+          </div>
+          <div class="feld">
+            <label for="nachweisNr">Nachweis-Nr.</label>
+            <input type="text" id="nachweisNr" inputmode="numeric" maxlength="4" autocomplete="off" spellcheck="true" lang="de">
+            <div class="feld-hinweis" id="nrHinweis"></div>
+          </div>
+        </div>
+      </section>
+
+      <div class="modus" role="radiogroup" aria-label="Berichtsart">
+        <label><input type="radio" name="modus" value="tag" checked>Tagesbericht</label>
+        <label><input type="radio" name="modus" value="woche">Wochenbericht</label>
       </div>
 
-      <label for="mailText">Mailtext</label>
-      <div class="kopier-zeile kopier-zeile--text">
-        <textarea id="mailText" rows="8" readonly></textarea>
-        <button type="button" class="btn-sekundaer" data-kopieren="mailText">Kopieren</button>
+      <section class="kw-nav" aria-label="Kalenderwoche">
+        <button type="button" class="pfeil" id="kwZurueck" aria-label="Vorherige Woche">◀</button>
+        <div class="kw-mitte">
+          <div class="kw-titel" id="kwTitel" aria-live="polite">KW – / –</div>
+          <div class="kw-zeitraum" id="kwZeitraum"></div>
+          <button type="button" class="link-btn" id="kwHeute" hidden>Zur aktuellen Woche</button>
+        </div>
+        <button type="button" class="pfeil" id="kwVor" aria-label="Nächste Woche">▶</button>
+      </section>
+
+      <section class="card" aria-labelledby="h-abw">
+        <h2 id="h-abw">Abwesenheiten &amp; Ferien</h2>
+        <p class="erklaerung">Urlaub, Krankheit und bewegliche Ferientage der Schule (<em>Ferien</em>: Betrieb ja, Schule nein) eintragen –
+          auch über mehrere Wochen. Die Schulferien Niedersachsen und gesetzlichen Feiertage sind bereits hinterlegt.</p>
+        <div id="abwListe" class="abw-liste"></div>
+        <button type="button" class="btn-link-plus" id="abwNeu">+ Abwesenheit hinzufügen</button>
+      </section>
+
+      <!-- Tagesbericht -->
+      <section id="tage" class="tage" aria-label="Wochentage"></section>
+
+      <!-- Wochenbericht -->
+      <section id="wochenbericht" hidden aria-label="Wochenbericht">
+        <div class="card wochenleiste" id="wochenleiste"></div>
+      </section>
+
+      <p class="zusammenfassung" id="zusammenfassung" hidden></p>
+
+      <section id="wochenTexte" hidden>
+        <div class="card block">
+          <div class="block-kopf">
+            <label for="textBetrieb">Betriebliche Tätigkeiten</label>
+            <span class="block-zeit" id="zeitBetrieb"></span>
+          </div>
+          <textarea id="textBetrieb" class="wachsend" rows="5" spellcheck="true" lang="de"
+            placeholder="Was hast du diese Woche im Betrieb gemacht und gelernt?"></textarea>
+        </div>
+        <div class="card block">
+          <div class="block-kopf">
+            <label for="textUnterweisung">Unterweisungen / Schulungen <span class="optional">(optional)</span></label>
+          </div>
+          <textarea id="textUnterweisung" class="wachsend" rows="3" spellcheck="true" lang="de"
+            placeholder="z. B. Arbeitssicherheit, Brandschutz, Software-Schulung"></textarea>
+        </div>
+        <div class="card block" id="blockSchule">
+          <div class="block-kopf">
+            <label for="textSchule">Berufsschule – Themen / Fächer</label>
+            <span class="block-zeit" id="zeitSchule"></span>
+          </div>
+          <textarea id="textSchule" class="wachsend" rows="4" spellcheck="true" lang="de"
+            placeholder="Welche Fächer und Themen wurden behandelt?"></textarea>
+        </div>
+      </section>
+
+      <section class="summe card" id="summen" aria-live="polite"></section>
+
+      <div class="aktion">
+        <div class="fehlermeldung" id="fehlermeldung" role="alert" hidden></div>
+        <div class="export-knoepfe">
+          <button type="button" class="btn-sekundaer btn-gross" id="exportEntwurf">Als Entwurf exportieren</button>
+          <button type="button" class="btn-primaer" id="exportFertig">Fertig exportieren</button>
+        </div>
+        <p class="export-hinweis">Entwurf: ohne Prüfung, mit Stempel „ENTWURF“. Beide PDFs kannst du später wieder hochladen und weiterschreiben.</p>
       </div>
+
+      <section class="card mail-box" id="mailBox" hidden aria-labelledby="h-mail">
+        <h2 id="h-mail">E-Mail an die Ausbildung</h2>
+        <p class="hinweis">✓ PDF wurde heruntergeladen – bitte an die Mail anhängen.</p>
+
+        <label for="mailBetreff">Betreff</label>
+        <div class="kopier-zeile">
+          <input type="text" id="mailBetreff" readonly spellcheck="true" lang="de">
+          <button type="button" class="btn-sekundaer" data-kopieren="mailBetreff">Kopieren</button>
+        </div>
+
+        <label for="mailText">Mailtext</label>
+        <div class="kopier-zeile kopier-zeile--text">
+          <textarea id="mailText" rows="9" readonly spellcheck="true" lang="de"></textarea>
+          <button type="button" class="btn-sekundaer" data-kopieren="mailText">Kopieren</button>
+        </div>
+
+        <div class="outlook-zeile">
+          <a class="btn-primaer" id="outlookLink" href="mailto:">In Outlook öffnen</a>
+          <span class="outlook-hinweis">Bitte das heruntergeladene PDF anhängen.</span>
+        </div>
+      </section>
+    </section>
+
+    <!-- ================= Gesamt-Berichtsheft ================= -->
+    <section id="panelGesamt" role="tabpanel" aria-labelledby="tabGesamt" hidden>
+      <section class="card">
+        <h2>Gesamt-Berichtsheft erstellen</h2>
+        <p class="erklaerung">Wähle alle exportierten Wochen-PDFs aus. Sie werden nach Kalenderwoche sortiert, geprüft und mit
+          Deckblatt und Übersicht zu einem PDF zusammengeführt. Alles passiert in deinem Browser – nichts wird hochgeladen.</p>
+        <div class="dropzone" id="sammelDrop">
+          <p><strong>PDFs hierher ziehen</strong> oder</p>
+          <button type="button" class="btn-sekundaer" id="sammelKnopf">PDFs auswählen</button>
+          <input type="file" id="sammelDatei" accept="application/pdf,.pdf" multiple hidden>
+        </div>
+      </section>
+
+      <section class="card" id="sammelBereich" hidden>
+        <div class="sammel-kopf">
+          <h2>Dateien</h2>
+          <button type="button" class="link-btn" id="sammelLeeren">Liste leeren</button>
+        </div>
+        <div class="tabelle-scroll">
+          <table class="sammel-tabelle" id="sammelTabelle">
+            <thead>
+              <tr><th>Mit</th><th>KW</th><th>Datei</th><th>Status</th><th>Name</th><th>Abteilung</th><th>Art</th><th></th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div id="sammelPruefung" class="sammel-pruefung"></div>
+        <div class="aktion">
+          <button type="button" class="btn-primaer" id="gesamtErstellen">Gesamt-PDF erstellen</button>
+        </div>
+      </section>
     </section>
   </main>
 
@@ -88,15 +203,17 @@
     HYDROTEC Technologies AG · Es werden keine Daten gespeichert oder übertragen.
   </footer>
 
-  <dialog id="wocheDialog" class="dialog" aria-labelledby="wocheDialogText">
+  <dialog id="dialog" class="dialog" aria-labelledby="dialogText">
     <form method="dialog">
-      <p id="wocheDialogText">Einträge dieser Woche verwerfen und neue Woche starten?</p>
+      <p id="dialogText"></p>
       <div class="dialog-knoepfe">
-        <button type="submit" value="abbrechen" class="btn-sekundaer" id="wocheAbbrechen">Abbrechen</button>
-        <button type="submit" value="ja" class="btn-primaer" id="wocheJa">Ja</button>
+        <button type="submit" value="abbrechen" class="btn-sekundaer" id="dialogAbbrechen">Abbrechen</button>
+        <button type="submit" value="ja" class="btn-primaer" id="dialogJa">Ja</button>
       </div>
     </form>
   </dialog>
+
+  <div class="drop-overlay" id="dropOverlay" hidden><div>PDF hier ablegen</div></div>
 
   <template id="tagVorlage">
     <article class="tag card">
@@ -105,17 +222,17 @@
           <h3 class="tag-name"></h3>
           <div class="tag-datum"></div>
         </div>
-        <span class="feiertag-badge" hidden></span>
+        <div class="chips"></div>
       </header>
       <div class="segmente" role="radiogroup"></div>
       <div class="tag-felder">
         <div class="feld feld-text">
           <label class="text-label"></label>
-          <textarea rows="3"></textarea>
+          <textarea rows="3" class="wachsend" spellcheck="true" lang="de"></textarea>
         </div>
-        <div class="feld feld-std">
-          <label class="std-label">Stunden</label>
-          <input type="number" min="0" max="24" step="0.5" inputmode="decimal">
+        <div class="feld feld-zeit">
+          <span class="zeit-label">Zeit (Std:Min)</span>
+          <div class="zeit-platz"></div>
         </div>
       </div>
     </article>
@@ -123,7 +240,12 @@
 
   <script src="vendor/jspdf.umd.min.js"></script>
   <script src="vendor/jspdf.plugin.autotable.min.js"></script>
+  <script src="vendor/pdf-lib.min.js"></script>
   <script src="kalender.js"></script>
+  <script src="ferien.js"></script>
+  <script src="zeit.js"></script>
+  <script src="bericht.js"></script>
+  <script src="pdf.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
